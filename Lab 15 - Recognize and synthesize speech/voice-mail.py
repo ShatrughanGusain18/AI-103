@@ -1,182 +1,135 @@
-from dotenv import load_dotenv
 import os
 
+from dotenv import load_dotenv
 from playsound3 import playsound
+
+# Import namespaces
 from azure.identity import DefaultAzureCredential
 import azure.cognitiveservices.speech as speech_sdk
 
 
 def main():
     try:
-        # Clear console
-        os.system('cls' if os.name == 'nt' else 'clear')
+        # Clear the console
+        os.system("cls" if os.name == "nt" else "clear")
 
-        # Load environment variables
+        # Get configuration settings
         load_dotenv()
 
         foundry_endpoint = os.getenv("FOUNDRY_ENDPOINT")
+        foundry_key = os.getenv("FOUNDRY_KEY")
 
-        # Validate endpoint
-        if not foundry_endpoint:
-            raise ValueError(
-                "FOUNDRY_ENDPOINT is not set in the .env file"
-            )
-
-        # Create credential
+        # Create SpeechConfig using Entra ID authentication
         credential = DefaultAzureCredential()
 
-        # Create speech configuration
         speech_config = speech_sdk.SpeechConfig(
             token_credential=credential,
-            endpoint=foundry_endpoint
+            endpoint=foundry_endpoint,
         )
 
-        # Menu loop
-        while True:
+        # Loop until user quits
+        input_text = ""
 
-            print("\n" + "=" * 50)
-            choice = input(
+        while input_text != "3":
+            input_text = input(
                 "Choose an option:\n"
                 "1: Record a greeting\n"
                 "2: Transcribe messages\n"
-                "3: Exit\n\n"
-                "Enter choice: "
+                "3: Exit\n"
             )
 
-            if choice == "1":
+            if input_text == "1":
                 record_greeting(speech_config)
 
-            elif choice == "2":
+            elif input_text == "2":
                 transcribe_messages(speech_config)
 
-            elif choice == "3":
-                print("\nExiting application...")
-                break
+            elif input_text == "3":
+                print("Exiting...")
+                return
 
             else:
-                print("\nInvalid option. Please try again.")
+                print("Invalid option, please try again.")
 
     except Exception as ex:
-        print(f"\nError: {ex}")
+        print(ex)
 
 
-# ----------------------------------------
-# Record Greeting Function
-# ----------------------------------------
 def record_greeting(speech_config):
+    """Record a greeting using Speech Synthesis."""
 
-    print("\nRecording greeting...\n")
+    print("Recording greeting...")
 
-    # Get greeting text from user
-    greeting_message = input(
-        "Enter your greeting message: "
-    )
+    # Get greeting message from the user
+    greeting_message = input("Enter your greeting message: ")
 
-    # Output audio file
+    # Synthesize the greeting message to an audio file
     output_file = "greeting.wav"
 
-    # Configure audio output
     audio_config = speech_sdk.audio.AudioOutputConfig(
         filename=output_file
     )
 
-    # Set voice
     speech_config.speech_synthesis_voice_name = (
-        "en-US-Serena:DragonHDLatestNeural"
+        "en-US-Jimmie:DragonHDFlashLatestNeural"
     )
 
-    # Create synthesizer
     speech_synthesizer = speech_sdk.SpeechSynthesizer(
         speech_config=speech_config,
-        audio_config=audio_config
+        audio_config=audio_config,
     )
 
-    # Convert text to speech
     result = speech_synthesizer.speak_text_async(
         greeting_message
     ).get()
 
-    # Check result
-    if (
-        result.reason
-        == speech_sdk.ResultReason.SynthesizingAudioCompleted
-    ):
-        print(
-            f"\nGreeting recorded successfully "
-            f"and saved as '{output_file}'"
-        )
+    if result.reason == speech_sdk.ResultReason.SynthesizingAudioCompleted:
+        print(f"Greeting recorded and saved to {output_file}")
+
+        # Release synthesizer resources
+        speech_synthesizer = None
 
     else:
-        print(
-            f"\nError recording greeting: "
-            f"{result.reason}"
-        )
+        print(f"Error recording greeting: {result.reason}")
 
 
-# ----------------------------------------
-# Transcribe Messages Function
-# ----------------------------------------
 def transcribe_messages(speech_config):
+    """Transcribe all WAV files in the messages folder."""
 
-    print("\nTranscribing messages...\n")
+    print("Transcribing messages...")
 
     messages_folder = "messages"
 
-    # Check folder exists
-    if not os.path.exists(messages_folder):
-        print(
-            f"Folder '{messages_folder}' does not exist."
-        )
-        return
-
-    # Process WAV files
     for file_name in os.listdir(messages_folder):
-
         if file_name.endswith(".wav"):
 
-            print("\n" + "-" * 50)
-            print(f"Transcribing: {file_name}")
+            print(f"\nTranscribing {file_name}...")
 
-            file_path = os.path.join(
-                messages_folder,
-                file_name
-            )
+            file_path = os.path.join(messages_folder, file_name)
 
-            # Play audio file
-            print("\nPlaying audio...")
-            playsound(file_path)
+            # Play the audio file
+            playsound(str(file_path))
 
-            # Configure audio input
+            # Configure speech recognizer
             audio_config = speech_sdk.audio.AudioConfig(
                 filename=file_path
             )
 
-            # Create recognizer
             speech_recognizer = speech_sdk.SpeechRecognizer(
                 speech_config=speech_config,
-                audio_config=audio_config
+                audio_config=audio_config,
             )
 
-            # Perform transcription
-            result = (
-                speech_recognizer
-                .recognize_once_async()
-                .get()
-            )
+            # Transcribe the audio
+            result = speech_recognizer.recognize_once_async().get()
 
-            # Print result
-            if (
-                result.reason
-                == speech_sdk.ResultReason.RecognizedSpeech
-            ):
-                print(f"\nTranscription:\n{result.text}")
+            if result.reason == speech_sdk.ResultReason.RecognizedSpeech:
+                print(f"Transcription: {result.text}")
 
             else:
-                print(
-                    f"\nError transcribing message: "
-                    f"{result.reason}"
-                )
+                print(f"Error transcribing message: {result.reason}")
 
 
 if __name__ == "__main__":
     main()
+ 

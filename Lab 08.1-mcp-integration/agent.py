@@ -2,71 +2,89 @@ import os
 from dotenv import load_dotenv
 
 # Add references
-# Add references
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import PromptAgentDefinition, MCPTool
-from openai.types.responses.response_input_param import McpApprovalResponse, ResponseInputParam
+from azure.ai.projects.models import (
+    PromptAgentDefinition,
+    MCPTool,
+)
+from openai.types.responses.response_input_param import (
+    McpApprovalResponse,
+    ResponseInputParam,
+)
 
-
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
+
 project_endpoint = os.getenv("PROJECT_ENDPOINT")
 model_deployment = os.getenv("MODEL_DEPLOYMENT_NAME")
 
-# Connect to the agents client
-# Connect to the agents client
+# Connect to the Agents client
 with (
     DefaultAzureCredential() as credential,
-    AIProjectClient(endpoint=project_endpoint, credential=credential) as project_client,
+    AIProjectClient(
+        endpoint=project_endpoint,
+        credential=credential,
+    ) as project_client,
     project_client.get_openai_client() as openai_client,
 ):
 
-
-    # Initialize agent MCP tool
-    # Initialize agent MCP tool
+    # Initialize MCP Tool
     mcp_tool = MCPTool(
         server_label="api-specs",
         server_url="https://learn.microsoft.com/api/mcp",
         require_approval="always",
     )
 
-
-    # Create a new agent with the MCP tool
     # Create a new agent with the MCP tool
     agent = project_client.agents.create_version(
         agent_name="MyAgent",
         definition=PromptAgentDefinition(
             model=model_deployment,
-            instructions="You are a helpful agent that can use MCP tools to assist users. Use the available MCP tools to answer questions and perform tasks.",
+            instructions=(
+                "You are a helpful agent that can use MCP tools to assist "
+                "users. Use the available MCP tools to answer questions "
+                "and perform tasks."
+            ),
             tools=[mcp_tool],
         ),
     )
-    print(f"Agent created (id: {agent.id}, name: {agent.name}, version: {agent.version})")
-    
 
-    # Create conversation thread
-    # Create a conversation thread
+    print(
+        f"Agent created "
+        f"(id: {agent.id}, "
+        f"name: {agent.name}, "
+        f"version: {agent.version})"
+    )
+
+    # Create a conversation
     conversation = openai_client.conversations.create()
     print(f"Created conversation (id: {conversation.id})")
-    
 
-    # Send initial request that will trigger the MCP tool
-    # Send initial request that will trigger the MCP tool
+    # Send initial request
     response = openai_client.responses.create(
         conversation=conversation.id,
-        input="Give me the Azure CLI commands to create an Azure Foundry portal with a api key identity.",
-        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+        input="Give me the Azure CLI commands to create an Azure Foundry project.",
+        extra_body={
+            "agent_reference": {
+                "name": agent.name,
+                "type": "agent_reference",
+            }
+        },
     )
-    
 
-    # Process any MCP approval requests that were generated
-    # Process any MCP approval requests that were generated
-    input_list: ResponseInputParam = []
-    for item in response.output:
-        if item.type == "mcp_approval_request":
-            if item.server_label == "api-specs" and item.id:
-                # Automatically approve the MCP request to allow the agent to proceed
+    # Process MCP approval requests
+    while True:
+
+        input_list: ResponseInputParam = []
+
+        for item in response.output:
+
+            if (
+                item.type == "mcp_approval_request"
+                and item.server_label == "api-specs"
+                and item.id
+            ):
                 input_list.append(
                     McpApprovalResponse(
                         type="mcp_approval_response",
@@ -75,23 +93,30 @@ with (
                     )
                 )
 
-    print("Final input:")
-    print(input_list)
+        # No more approvals required
+        if not input_list:
+            break
 
+        # Send approvals back to the model
+        response = openai_client.responses.create(
+            input=input_list,
+            previous_response_id=response.id,
+            extra_body={
+                "agent_reference": {
+                    "name": agent.name,
+                    "type": "agent_reference",
+                }
+            },
+        )
 
-    # Send the approval response back and retrieve a response
-    # Send the approval response back and retrieve a response
-    response = openai_client.responses.create(
-        input=input_list,
-        previous_response_id=response.id,
-        extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+    # Print final response
+    print(f"\nAgent response:\n{response.output_text}")
+
+    # Clean up
+    project_client.agents.delete_version(
+        agent_name=agent.name,
+        agent_version=agent.version,
     )
 
-    print(f"\nAgent response: {response.output_text}")
-    
-    
-    # Clean up resources by deleting the agent version
-    # Clean up resources by deleting the agent version
-    project_client.agents.delete_version(agent_name=agent.name, agent_version=agent.version)
     print("Agent deleted")
-    
+ 

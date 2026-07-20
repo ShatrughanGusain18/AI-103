@@ -1,147 +1,92 @@
-import sys
 import os
+import sys
 
 from dotenv import load_dotenv
 
-from azure.ai.contentunderstanding import (
-    ContentUnderstandingClient
-)
+# Add references
+from azure.ai.contentunderstanding import ContentUnderstandingClient
 from azure.ai.contentunderstanding.models import (
     AnalysisInput,
-    AnalysisResult
+    AnalysisResult,
 )
 from azure.core.exceptions import AzureError
 from azure.identity import DefaultAzureCredential
 
 
 def main():
+    """Main entry point."""
 
-    # Clear console
-    os.system('cls' if os.name == 'nt' else 'clear')
+    # Clear the console
+    os.system("cls" if os.name == "nt" else "clear")
 
-    try:
-        # Load environment variables
-        load_dotenv()
+    # Get configuration settings
+    load_dotenv()
 
-        endpoint = os.getenv("ENDPOINT")
-        analyzer_id = os.getenv("ANALYZER")
+    endpoint = os.getenv("ENDPOINT")
+    analyzer_id = os.getenv("ANALYZER")
+    api_version = "2025-11-01"
 
-        api_version = "2025-11-01"
+    # Set up Content Understanding client
+    credential = DefaultAzureCredential()
 
-        # Validate environment variables
-        if not endpoint:
-            raise ValueError(
-                "ENDPOINT is not set in the .env file"
-            )
+    client = ContentUnderstandingClient(
+        endpoint=endpoint,
+        credential=credential,
+        api_version=api_version,
+    )
 
-        if not analyzer_id:
-            raise ValueError(
-                "ANALYZER is not set in the .env file"
-            )
-
-        # Create credential
-        credential = DefaultAzureCredential()
-
-        # Create Content Understanding client
-        client = ContentUnderstandingClient(
-            endpoint=endpoint,
-            credential=credential,
-            api_version=api_version
+    while True:
+        file_no = input(
+            "\nChoose a file (1, 2, or 3), or anything else to exit: "
         )
 
-        print("=" * 60)
-        print("Azure Content Understanding")
-        print("=" * 60)
+        if file_no not in ["1", "2", "3"]:
+            break
 
-        # Main loop
-        while True:
+        file_path = f"images/image{file_no}.jpg"
 
-            file_no = input(
-                "\nChoose a file (1, 2, or 3)"
-                "\nAny other key to exit: "
-            ).strip()
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
 
-            # Exit condition
-            if file_no not in ["1", "2", "3"]:
-                print("\nExiting application...")
-                break
+        print(f"Analyzing with {analyzer_id} analyzer...")
+        print(f"  File: {file_path}\n")
 
-            # Example file mapping
-            file_map = {
-                "1": r"C:\Users\Admin\Desktop\R.jpg",
-                "2": r"C:\Users\Admin\Desktop\R.jpg",
-                "3": r"C:\Users\Admin\Desktop\R.jpg"
-            }
+        # Analyze the file
+        try:
+            poller = client.begin_analyze(
+                analyzer_id=analyzer_id,
+                inputs=[
+                    AnalysisInput(data=file_bytes),
+                ],
+            )
 
-            file_path = file_map[file_no]
+            result: AnalysisResult = poller.result()
 
-            # Validate file existence
-            if not os.path.exists(file_path):
+        except AzureError as err:
+            print(f"[Azure Error]: {err.message}")
+            sys.exit(1)
+
+        except Exception as ex:
+            print(f"[Unexpected Error]: {ex}")
+            sys.exit(1)
+
+        print("--" * 20)
+        print(result.contents[0])
+        print("--" * 20)
+
+        for field in result.contents[0].fields:
+
+            if field == "Description":
                 print(
-                    f"\nFile does not exist:\n{file_path}"
-                )
-                continue
-
-            # Read file bytes
-            with open(file_path, "rb") as file:
-                file_bytes = file.read()
-
-            print("\nAnalyzing file...")
-            print(f"Analyzer : {analyzer_id}")
-            print(f"File     : {file_path}\n")
-
-            try:
-                # Submit analysis request
-                poller = client.begin_analyze(
-                    analyzer_id=analyzer_id,
-                    inputs=[
-                        AnalysisInput(
-                            data=file_bytes
-                        )
-                    ],
+                    f"{field}:\n"
+                    f"{result.contents[0].fields[field].value_string}\n"
                 )
 
-                # Get result
-                result: AnalysisResult = poller.result()
+            elif field == "Tags":
+                print(f"{field}:")
 
-            except AzureError as err:
-                print(f"\n[Azure Error]: {err.message}")
-                continue
-
-            except Exception as ex:
-                print(f"\n[Unexpected Error]: {ex}")
-                continue
-
-            # Process analysis results
-            print("=" * 60)
-
-            fields = result.contents[0].fields
-
-            for field_name in fields:
-
-                field_value = fields[field_name]
-
-                # Description field
-                if field_name == "Description":
-
-                    print(
-                        f"\n{field_name}:\n"
-                        f"{field_value.value_string}\n"
-                    )
-
-                # Tags field
-                elif field_name == "Tags":
-
-                    print(f"\n{field_name}:")
-
-                    for tag in field_value.value_array:
-                        print(f"  - {tag.value_string}")
-
-            print("=" * 60)
-
-    except Exception as ex:
-        print(f"\nError: {ex}")
-        sys.exit(1)
+                for tag in result.contents[0].fields[field].value_array:
+                    print(f"  - {tag.value_string}")
 
 
 if __name__ == "__main__":

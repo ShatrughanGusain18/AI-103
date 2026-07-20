@@ -1,76 +1,60 @@
 import os
 from pathlib import Path
 
-from playsound3 import playsound
 from dotenv import load_dotenv
+from playsound3 import playsound
 
+# Import namespaces
 from openai import AzureOpenAI
 from azure.identity import (
     DefaultAzureCredential,
-    get_bearer_token_provider
+    get_bearer_token_provider,
 )
 
 
 def main():
     try:
-        # Clear console
-        os.system('cls' if os.name == 'nt' else 'clear')
+        # Clear the console
+        os.system("cls" if os.name == "nt" else "clear")
 
-        # Load environment variables
+        # Get configuration settings
         load_dotenv()
 
         endpoint = os.getenv("MODEL_ENDPOINT")
         model_deployment = os.getenv("MODEL_NAME")
 
-        # Validate environment variables
-        if not endpoint:
-            raise ValueError(
-                "MODEL_ENDPOINT is not set in the .env file"
-            )
+        speech_file_path = Path(__file__).parent / "speech.mp3"
 
-        if not model_deployment:
-            raise ValueError(
-                "MODEL_NAME is not set in the .env file"
-            )
-
-        # Output speech file path
-        speech_file_path = (
-            Path(__file__).parent / "speech.mp3"
-        )
-
-        # Create Azure credential token provider
+        # Create the Azure OpenAI client
         token_provider = get_bearer_token_provider(
             DefaultAzureCredential(),
-            "https://ai.azure.com/.default"
+            "https://ai.azure.com/.default",
         )
 
-        # Create Azure OpenAI client
         client = AzureOpenAI(
             azure_endpoint=endpoint,
             azure_ad_token_provider=token_provider,
-            api_version="2025-03-01-preview"
+            api_version="2025-03-01-preview",
         )
-
-        print("Generating speech...\n")
 
         # Generate speech and save to file
         with client.audio.speech.with_streaming_response.create(
             model=model_deployment,
-            voice="alloy",
-            input="My voice is my passport!",
-            instructions="Speak in a serious tone.",
+            voice="coral",
+            input=(
+                "Hi, my name is Shatrughan. I am currently having a "
+                "session of AI-103, which is an associate-level exam "
+                "from Microsoft!"
+            ),
+            instructions="Speak in a casual professional tone.",
         ) as response:
-
             response.stream_to_file(speech_file_path)
 
-        print(f"Speech saved to: {speech_file_path}")
-
-        # Play generated audio
-        print("\nPlaying speech...\n")
+        # Play the generated speech file
         playsound(str(speech_file_path))
 
     except Exception as ex:
-        print(f"\nError: {ex}")
+        print(ex)
 
 
 if __name__ == "__main__":
